@@ -66,7 +66,9 @@ export function MarketplaceDashboard({
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [categoryError, setCategoryError] = useState("");
+  const [trendError, setTrendError] = useState("");
+  const [itemError, setItemError] = useState("");
   const limit = 50;
 
   const selectedCategoryName = useMemo(
@@ -75,8 +77,12 @@ export function MarketplaceDashboard({
   );
 
   useEffect(() => {
+    if (!mlStatus.isConnected) {
+      return;
+    }
+
     void loadCategories();
-  }, []);
+  }, [mlStatus.isConnected]);
 
   useEffect(() => {
     if (!mlStatus.isConnected) {
@@ -98,6 +104,7 @@ export function MarketplaceDashboard({
 
   async function loadCategories() {
     try {
+      setCategoryError("");
       const response = await fetch("/api/ml/categories");
       const data = await response.json();
 
@@ -108,12 +115,13 @@ export function MarketplaceDashboard({
       setCategories(data.categories);
       setSelectedCategory(data.categories?.[0]?.id ?? "");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Nao foi possivel carregar categorias.");
+      setCategoryError(caught instanceof Error ? caught.message : "Nao foi possivel carregar categorias.");
     }
   }
 
   async function loadTrends(categoryId?: string) {
     try {
+      setTrendError("");
       const params = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : "";
       const response = await fetch(`/api/ml/trends${params}`);
       const data = await response.json();
@@ -124,13 +132,14 @@ export function MarketplaceDashboard({
 
       setTrends(Array.isArray(data.trends) ? data.trends : []);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Nao foi possivel carregar trends.");
+      setTrends([]);
+      setTrendError(getFriendlyMlError(caught, "Nao foi possivel carregar trends."));
     }
   }
 
   async function loadItems({ nextOffset = 0 }: { nextOffset?: number } = {}) {
     setLoading(true);
-    setError("");
+    setItemError("");
 
     try {
       const params = new URLSearchParams({
@@ -156,7 +165,9 @@ export function MarketplaceDashboard({
       setItems(data.results ?? []);
       setTotal(data.paging?.total ?? 0);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Nao foi possivel buscar produtos.");
+      setItems([]);
+      setTotal(0);
+      setItemError(getFriendlyMlError(caught, "Nao foi possivel buscar produtos."));
     } finally {
       setLoading(false);
     }
@@ -239,10 +250,10 @@ export function MarketplaceDashboard({
           </div>
         )}
 
-        {error && <div className="status-banner warning">{error}</div>}
+        {categoryError && <div className="status-banner warning">{categoryError}</div>}
 
         <section className="metric-grid" aria-label="Resumo">
-          <Metric icon={TrendingUp} label="Trends carregadas" value={String(trends.length)} detail="retorno real do ML" />
+          <Metric icon={TrendingUp} label="Trends carregadas" value={String(trends.length)} detail="retorno do Mercado Livre" />
           <Metric icon={BarChart3} label="Categorias" value={String(categories.length)} detail="categorias raiz MLB" />
           <Metric icon={ArrowDownUp} label="Produtos" value={String(items.length)} detail={`${total} resultados encontrados`} />
           <Metric icon={Clock3} label="Pagina" value={`${offset / limit + 1}`} detail={`${limit} itens por pagina`} />
@@ -282,9 +293,9 @@ export function MarketplaceDashboard({
               </form>
             </div>
 
-            {!mlStatus.isConnected ? (
-              <div className="empty-state">Conecte o Mercado Livre para carregar trends e produtos reais.</div>
-            ) : (
+            {itemError && <div className="status-banner warning inline">{itemError}</div>}
+
+            {mlStatus.isConnected && (
               <>
                 <div className="product-table" role="table" aria-label="Produtos do Mercado Livre">
                   <div className="table-row table-head" role="row">
@@ -360,18 +371,51 @@ export function MarketplaceDashboard({
                 <ExternalLink size={18} />
               </div>
               <div className="trend-list">
-                {trends.map((trend, index) => (
-                  <a href={trend.url} target="_blank" rel="noreferrer" key={`${trend.keyword}-${index}`}>
-                    <span>#{index + 1}</span>
-                    <strong>{trend.keyword}</strong>
-                    <ExternalLink size={14} />
-                  </a>
-                ))}
+                {trendError ? (
+                  <div className="resource-error">{trendError}</div>
+                ) : (
+                  trends.map((trend, index) => (
+                    <a href={trend.url} target="_blank" rel="noreferrer" key={`${trend.keyword}-${index}`}>
+                      <span>#{index + 1}</span>
+                      <strong>{trend.keyword}</strong>
+                      <ExternalLink size={14} />
+                    </a>
+                  ))
+                )}
               </div>
             </div>
           </aside>
         </section>
       </section>
+
+      {!mlStatus.isConnected && (
+        <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="ml-auth-title">
+          <div className="skeleton-backdrop" aria-hidden="true">
+            <div />
+            <div />
+            <div />
+          </div>
+          <section className="auth-modal">
+            <div className="auth-icon">
+              <Lock size={24} />
+            </div>
+            <p className="eyebrow">Acesso Mercado Livre</p>
+            <h2 id="ml-auth-title">Conecte sua conta para consultar produtos e tendencias.</h2>
+            <p>
+              A tela fica bloqueada ate o OAuth inicial terminar. Depois disso, usamos o token no
+              servidor para chamar as APIs disponiveis para sua conta.
+            </p>
+            <a
+              className={mlStatus.isConfigured ? "connect-button" : "connect-button disabled"}
+              href={mlStatus.isConfigured ? "/api/ml/auth" : undefined}
+              aria-disabled={!mlStatus.isConfigured}
+            >
+              <ShoppingBag size={18} />
+              <span>Conectar Mercado Livre</span>
+            </a>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
@@ -417,4 +461,14 @@ function formatCompact(value?: number) {
     notation: "compact",
     maximumFractionDigits: 1
   }).format(value);
+}
+
+function getFriendlyMlError(caught: unknown, fallback: string) {
+  const message = caught instanceof Error ? caught.message : fallback;
+
+  if (message.includes("PA_UNAUTHORIZED_RESULT_FROM_POLICIES") || message.includes("PolicyAgent")) {
+    return "O Mercado Livre negou esse recurso para o token atual. Confira as permissoes do app ou use outro recurso disponivel para sua conta.";
+  }
+
+  return message;
 }

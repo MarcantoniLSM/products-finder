@@ -214,7 +214,7 @@ export async function searchMlItems({
     params.set("category", categoryId);
   }
 
-  return fetchMl<MlSearchResponse>(`/sites/${SITE_ID}/search?${params.toString()}`);
+  return fetchMlPublic<MlSearchResponse>(`/sites/${SITE_ID}/search?${params.toString()}`);
 }
 
 async function postMlToken(body: URLSearchParams) {

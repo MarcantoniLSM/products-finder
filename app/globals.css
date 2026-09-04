@@ -229,6 +229,10 @@ h2 {
   color: #6d460f;
 }
 
+.status-banner.inline {
+  margin: 0 0 14px;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -492,6 +496,16 @@ h2 {
   white-space: nowrap;
 }
 
+.resource-error {
+  border: 1px dashed #edd2a2;
+  border-radius: 8px;
+  background: #fff7e8;
+  color: #6d460f;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 12px;
+}
+
 .empty-state {
   border: 1px dashed var(--line);
   border-radius: 8px;
@@ -517,6 +531,79 @@ h2 {
 .pagination span {
   color: var(--muted);
   font-size: 14px;
+}
+
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(12, 18, 16, 0.44);
+  backdrop-filter: blur(6px);
+}
+
+.skeleton-backdrop {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 24px;
+  padding: 32px;
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.skeleton-backdrop div {
+  border-radius: 8px;
+  background: linear-gradient(90deg, #ffffff 0%, #dbe5df 50%, #ffffff 100%);
+}
+
+.skeleton-backdrop div:first-child {
+  grid-row: span 2;
+}
+
+.skeleton-backdrop div:nth-child(2) {
+  min-height: 180px;
+}
+
+.skeleton-backdrop div:nth-child(3) {
+  min-height: 320px;
+}
+
+.auth-modal {
+  position: relative;
+  z-index: 1;
+  width: min(480px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 28px 80px rgba(12, 18, 16, 0.28);
+  padding: 26px;
+}
+
+.auth-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  background: #173f34;
+  color: #ffffff;
+  margin-bottom: 16px;
+}
+
+.auth-modal h2 {
+  font-size: 26px;
+  line-height: 1.12;
+  margin-bottom: 10px;
+}
+
+.auth-modal p:not(.eyebrow) {
+  color: var(--muted);
+  line-height: 1.55;
+  margin-bottom: 18px;
 }
 
 @media (max-width: 980px) {
@@ -563,7 +650,8 @@ h2 {
     grid-template-columns: 1fr;
   }
 
-  .search-box {
-    min-width: 0;
+  .skeleton-backdrop {
+    grid-template-columns: 1fr;
+    padding: 18px;
   }
 }

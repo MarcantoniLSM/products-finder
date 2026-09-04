@@ -14,7 +14,7 @@ export default async function Home({
 
 function getMlMessage(status?: string) {
   if (status === "connected") {
-    return { kind: "success" as const, text: "Mercado Livre conectado. Dados reais habilitados." };
+    return { kind: "success" as const, text: "Mercado Livre conectado. Agora vamos consultar os recursos disponiveis para sua conta." };
   }
 
   if (status === "missing_code") {
