@@ -24,6 +24,38 @@ export type MlHighlight = {
   position?: number;
 };
 
+export type MlCategory = {
+  id: string;
+  name: string;
+  total_items_in_this_category?: number;
+  children_categories?: MlCategory[];
+  path_from_root?: Array<{ id: string; name: string }>;
+};
+
+export type MlSearchItem = {
+  id: string;
+  title: string;
+  permalink: string;
+  price?: number;
+  currency_id?: string;
+  thumbnail?: string;
+  category_id?: string;
+  sold_quantity?: number;
+  available_quantity?: number;
+};
+
+export type MlSearchResponse = {
+  site_id: string;
+  query?: string;
+  paging: {
+    total: number;
+    primary_results?: number;
+    offset: number;
+    limit: number;
+  };
+  results: MlSearchItem[];
+};
+
 export function getMlConfig() {
   const clientId = process.env.MERCADO_LIVRE_CLIENT_ID;
   const clientSecret = process.env.MERCADO_LIVRE_CLIENT_SECRET;
@@ -150,6 +182,41 @@ export async function fetchMlHighlights(categoryId: string) {
   return fetchMl<{ content?: MlHighlight[] }>(`/highlights/${SITE_ID}/category/${categoryId}`);
 }
 
+export async function fetchMlCategories() {
+  return fetchMlPublic<MlCategory[]>(`/sites/${SITE_ID}/categories`);
+}
+
+export async function fetchMlCategory(categoryId: string) {
+  return fetchMlPublic<MlCategory>(`/categories/${categoryId}`);
+}
+
+export async function searchMlItems({
+  query,
+  categoryId,
+  offset = 0,
+  limit = 50
+}: {
+  query?: string;
+  categoryId?: string;
+  offset?: number;
+  limit?: number;
+}) {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset)
+  });
+
+  if (query) {
+    params.set("q", query);
+  }
+
+  if (categoryId) {
+    params.set("category", categoryId);
+  }
+
+  return fetchMl<MlSearchResponse>(`/sites/${SITE_ID}/search?${params.toString()}`);
+}
+
 async function postMlToken(body: URLSearchParams) {
   const response = await fetch(`${ML_API_BASE_URL}/oauth/token`, {
     method: "POST",
@@ -185,6 +252,19 @@ async function fetchMl<T>(path: string) {
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(`Mercado Livre request failed: ${response.status} ${detail}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+async function fetchMlPublic<T>(path: string) {
+  const response = await fetch(`${ML_API_BASE_URL}${path}`, {
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Mercado Livre public request failed: ${response.status} ${detail}`);
   }
 
   return (await response.json()) as T;
