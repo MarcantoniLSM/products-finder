@@ -170,11 +170,61 @@ h2 {
   margin-bottom: 0;
 }
 
-.icon-button {
+.icon-button,
+.connect-button {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
+}
+
+.top-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.connect-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.connect-button:not(.disabled) {
+  background: #173f34;
+  color: #ffffff;
+  border-color: #173f34;
+}
+
+.connect-button.disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.status-banner {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.status-banner.success {
+  background: #eaf7f0;
+  border-color: #b8dec9;
+  color: #145436;
+}
+
+.status-banner.warning {
+  background: #fff7e8;
+  border-color: #edd2a2;
+  color: #6d460f;
 }
 
 .metric-grid {

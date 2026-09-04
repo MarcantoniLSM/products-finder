@@ -13,6 +13,7 @@ import {
   Sparkles,
   TrendingUp
 } from "lucide-react";
+import { getMlConnectionStatus } from "@/lib/mercado-livre";
 
 const marketplaceNav = [
   { name: "Dashboard", status: "ativo", icon: Gauge },
@@ -65,7 +66,15 @@ const products = [
 
 const searches = ["smartwatch feminino", "air fryer 5 litros", "camera wifi", "mochila executiva"];
 
-export default function Home() {
+export default async function Home({
+  searchParams
+}: {
+  searchParams?: Promise<{ ml?: string }>;
+}) {
+  const mlStatus = await getMlConnectionStatus();
+  const params = await searchParams;
+  const mlMessage = getMlMessage(params?.ml);
+
   return (
     <main className="app-shell">
       <aside className="sidebar" aria-label="Navegacao principal">
@@ -101,7 +110,7 @@ export default function Home() {
 
         <div className="sidebar-note">
           <ShieldCheck size={18} />
-          <span>Sem autenticacao nesta fase. Projeto preparado para Vercel.</span>
+          <span>Sem login proprio. O OAuth do Mercado Livre fica isolado no servidor.</span>
         </div>
       </aside>
 
@@ -111,10 +120,26 @@ export default function Home() {
             <p className="eyebrow">Mercado Livre primeiro</p>
             <h1>Acompanhe produtos, tendencias e sinais de oportunidade.</h1>
           </div>
-          <button className="icon-button" aria-label="Notificacoes">
-            <Bell size={20} />
-          </button>
+          <div className="top-actions">
+            <a
+              className={mlStatus.isConfigured ? "connect-button" : "connect-button disabled"}
+              href={mlStatus.isConfigured ? "/api/ml/auth" : undefined}
+              aria-disabled={!mlStatus.isConfigured}
+            >
+              <Bell size={18} />
+              <span>{mlStatus.isConnected ? "Reconectar ML" : "Conectar ML"}</span>
+            </a>
+          </div>
         </header>
+
+        {mlMessage && <div className={`status-banner ${mlMessage.kind}`}>{mlMessage.text}</div>}
+
+        {!mlStatus.isConfigured && (
+          <div className="status-banner warning">
+            Configure `MERCADO_LIVRE_CLIENT_ID`, `MERCADO_LIVRE_CLIENT_SECRET` e
+            `MERCADO_LIVRE_REDIRECT_URI` no `.env.local`.
+          </div>
+        )}
 
         <section className="metric-grid" aria-label="Resumo">
           <Metric icon={TrendingUp} label="Sinais ativos" value="42" detail="+13 esta semana" />
@@ -197,6 +222,26 @@ export default function Home() {
       </section>
     </main>
   );
+}
+
+function getMlMessage(status?: string) {
+  if (status === "connected") {
+    return { kind: "success", text: "Mercado Livre conectado. As rotas de API ja podem usar o token." };
+  }
+
+  if (status === "missing_code") {
+    return { kind: "warning", text: "O callback voltou sem codigo de autorizacao." };
+  }
+
+  if (status === "invalid_state") {
+    return { kind: "warning", text: "O estado do OAuth nao confere. Tente conectar novamente." };
+  }
+
+  if (status === "token_error") {
+    return { kind: "warning", text: "Nao foi possivel trocar o codigo por token. Confira redirect URI, client id e secret." };
+  }
+
+  return null;
 }
 
 function Metric({
