@@ -506,6 +506,36 @@ h2 {
   padding: 12px;
 }
 
+.token-debug {
+  display: grid;
+  gap: 8px;
+  border: 1px dashed #b8c9e6;
+  border-radius: 8px;
+  background: #f2f6fc;
+  color: #1d355e;
+  padding: 12px;
+}
+
+.token-debug span {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.token-debug code {
+  max-height: 180px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #10213d;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
 .empty-state {
   border: 1px dashed var(--line);
   border-radius: 8px;

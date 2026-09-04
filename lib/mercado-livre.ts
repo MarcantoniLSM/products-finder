@@ -150,6 +150,15 @@ export async function readMlAccessToken() {
   return refreshed.access_token;
 }
 
+export async function readMlSessionTokens() {
+  const cookieStore = await cookies();
+
+  return {
+    accessToken: cookieStore.get("ml_access_token")?.value ?? null,
+    refreshToken: cookieStore.get("ml_refresh_token")?.value ?? null
+  };
+}
+
 export function setMlTokenCookies(
   cookieStore: Awaited<ReturnType<typeof cookies>>,
   token: MlTokenResponse

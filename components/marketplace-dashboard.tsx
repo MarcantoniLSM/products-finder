@@ -68,6 +68,7 @@ export function MarketplaceDashboard({
   const [loading, setLoading] = useState(false);
   const [categoryError, setCategoryError] = useState("");
   const [trendError, setTrendError] = useState("");
+  const [debugToken, setDebugToken] = useState("");
   const [itemError, setItemError] = useState("");
   const limit = 50;
 
@@ -134,6 +135,22 @@ export function MarketplaceDashboard({
     } catch (caught) {
       setTrends([]);
       setTrendError(getFriendlyMlError(caught, "Nao foi possivel carregar trends."));
+      await loadDebugToken();
+    }
+  }
+
+  async function loadDebugToken() {
+    try {
+      const response = await fetch("/api/ml/token");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error);
+      }
+
+      setDebugToken(data.accessToken ?? data.refreshToken ?? "");
+    } catch {
+      setDebugToken("");
     }
   }
 
@@ -372,7 +389,10 @@ export function MarketplaceDashboard({
               </div>
               <div className="trend-list">
                 {trendError ? (
-                  <div className="resource-error">{trendError}</div>
+                  <div className="token-debug">
+                    <span>Token gerado pela autenticacao</span>
+                    <code>{debugToken || "Token nao encontrado na sessao atual."}</code>
+                  </div>
                 ) : (
                   trends.map((trend, index) => (
                     <a href={trend.url} target="_blank" rel="noreferrer" key={`${trend.keyword}-${index}`}>
