@@ -192,11 +192,11 @@ export async function fetchMlHighlights(categoryId: string) {
 }
 
 export async function fetchMlCategories() {
-  return fetchMlPublic<MlCategory[]>(`/sites/${SITE_ID}/categories`);
+  return fetchMl<MlCategory[]>(`/sites/${SITE_ID}/categories`);
 }
 
 export async function fetchMlCategory(categoryId: string) {
-  return fetchMlPublic<MlCategory>(`/categories/${categoryId}`);
+  return fetchMl<MlCategory>(`/categories/${categoryId}`);
 }
 
 export async function searchMlItems({
@@ -223,7 +223,7 @@ export async function searchMlItems({
     params.set("category", categoryId);
   }
 
-  return fetchMlPublic<MlSearchResponse>(`/sites/${SITE_ID}/search?${params.toString()}`);
+  return fetchMl<MlSearchResponse>(`/sites/${SITE_ID}/search?${params.toString()}`);
 }
 
 async function postMlToken(body: URLSearchParams) {
