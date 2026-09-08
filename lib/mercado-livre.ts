@@ -246,7 +246,7 @@ export async function fetchMlHighlightedItems({
   const content = highlights.content ?? [];
   const page = content.slice(offset, offset + limit);
   const itemIds = page
-    .filter((highlight) => highlight.type === "ITEM" || highlight.id.startsWith("MLB"))
+    .filter((highlight) => highlight.type === "ITEM" && isMlItemId(highlight.id))
     .map((highlight) => highlight.id);
   const items = itemIds.length > 0 ? await fetchMlItemsBulk(itemIds) : [];
   const itemById = new Map(items.map((item) => [item.id, item]));
@@ -266,7 +266,7 @@ export async function fetchMlHighlightedItems({
         item ?? {
           id: highlight.id,
           title: `${highlight.type ?? "Produto"} ${highlight.id}`,
-          permalink: `https://produto.mercadolivre.com.br/${highlight.id}`,
+          permalink: `https://lista.mercadolivre.com.br/${encodeURIComponent(highlight.id)}`,
           category_id: categoryId
         }
       );
@@ -281,6 +281,10 @@ export async function fetchMlItemsBulk(itemIds: string[]) {
   return response
     .filter((item) => item.code >= 200 && item.code < 300)
     .map((item) => item.body);
+}
+
+function isMlItemId(id: string) {
+  return /^MLB\d+$/.test(id);
 }
 
 async function postMlToken(body: URLSearchParams) {
