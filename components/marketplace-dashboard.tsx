@@ -39,6 +39,8 @@ type MlItem = {
   available_quantity?: number;
 };
 
+type ProductSource = "search" | "highlights" | "";
+
 type MlMessage = {
   kind: "success" | "warning";
   text: string;
@@ -63,6 +65,7 @@ export function MarketplaceDashboard({
   const [query, setQuery] = useState("");
   const [trends, setTrends] = useState<MlTrend[]>([]);
   const [items, setItems] = useState<MlItem[]>([]);
+  const [productSource, setProductSource] = useState<ProductSource>("");
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -181,9 +184,11 @@ export function MarketplaceDashboard({
 
       setItems(data.results ?? []);
       setTotal(data.paging?.total ?? 0);
+      setProductSource(data.source ?? "search");
     } catch (caught) {
       setItems([]);
       setTotal(0);
+      setProductSource("");
       setItemError(getFriendlyMlError(caught, "Nao foi possivel buscar produtos."));
     } finally {
       setLoading(false);
@@ -282,6 +287,9 @@ export function MarketplaceDashboard({
               <div>
                 <p className="eyebrow">Mercado Livre</p>
                 <h2>{selectedCategoryName ?? "Produtos encontrados"}</h2>
+                {productSource === "highlights" && (
+                  <span className="source-note">Ranking de destaques por categoria</span>
+                )}
               </div>
               <form className="filters" onSubmit={submitSearch}>
                 <label>
@@ -349,7 +357,11 @@ export function MarketplaceDashboard({
                     Anterior
                   </button>
                   <span>
-                    {loading ? "Carregando..." : `${offset + 1}-${offset + items.length} de ${total}`}
+                    {loading
+                      ? "Carregando..."
+                      : items.length > 0
+                        ? `${offset + 1}-${offset + items.length} de ${total}`
+                        : `0 de ${total}`}
                   </span>
                   <button disabled={loading || offset + limit >= total} onClick={() => setOffset(offset + limit)}>
                     Proxima

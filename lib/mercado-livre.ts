@@ -47,6 +47,7 @@ export type MlSearchItem = {
 export type MlSearchResponse = {
   site_id: string;
   query?: string;
+  source?: "search" | "highlights";
   paging: {
     total: number;
     primary_results?: number;
@@ -54,6 +55,11 @@ export type MlSearchResponse = {
     limit: number;
   };
   results: MlSearchItem[];
+};
+
+type MlBulkItemResponse = {
+  code: number;
+  body: MlSearchItem;
 };
 
 export function getMlConfig() {
@@ -223,7 +229,58 @@ export async function searchMlItems({
     params.set("category", categoryId);
   }
 
-  return fetchMl<MlSearchResponse>(`/sites/${SITE_ID}/search?${params.toString()}`);
+  const data = await fetchMl<MlSearchResponse>(`/sites/${SITE_ID}/search?${params.toString()}`);
+  return { ...data, source: "search" as const };
+}
+
+export async function fetchMlHighlightedItems({
+  categoryId,
+  offset = 0,
+  limit = 50
+}: {
+  categoryId: string;
+  offset?: number;
+  limit?: number;
+}) {
+  const highlights = await fetchMlHighlights(categoryId);
+  const content = highlights.content ?? [];
+  const page = content.slice(offset, offset + limit);
+  const itemIds = page
+    .filter((highlight) => highlight.type === "ITEM" || highlight.id.startsWith("MLB"))
+    .map((highlight) => highlight.id);
+  const items = itemIds.length > 0 ? await fetchMlItemsBulk(itemIds) : [];
+  const itemById = new Map(items.map((item) => [item.id, item]));
+
+  return {
+    site_id: SITE_ID,
+    source: "highlights" as const,
+    paging: {
+      total: content.length,
+      offset,
+      limit
+    },
+    results: page.map((highlight) => {
+      const item = itemById.get(highlight.id);
+
+      return (
+        item ?? {
+          id: highlight.id,
+          title: `${highlight.type ?? "Produto"} ${highlight.id}`,
+          permalink: `https://produto.mercadolivre.com.br/${highlight.id}`,
+          category_id: categoryId
+        }
+      );
+    })
+  } satisfies MlSearchResponse;
+}
+
+export async function fetchMlItemsBulk(itemIds: string[]) {
+  const ids = itemIds.slice(0, 20).join(",");
+  const response = await fetchMl<MlBulkItemResponse[]>(`/items/bulk?ids=${encodeURIComponent(ids)}`);
+
+  return response
+    .filter((item) => item.code >= 200 && item.code < 300)
+    .map((item) => item.body);
 }
 
 async function postMlToken(body: URLSearchParams) {

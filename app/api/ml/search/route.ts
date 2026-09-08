@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchMlItems } from "@/lib/mercado-livre";
+import { fetchMlHighlightedItems, searchMlItems } from "@/lib/mercado-livre";
 
 const MAX_LIMIT = 100;
 
@@ -21,9 +21,30 @@ export async function GET(request: NextRequest) {
     const data = await searchMlItems({ query, categoryId, offset, limit });
     return NextResponse.json(data);
   } catch (error) {
+    if (categoryId && isForbiddenSearchError(error)) {
+      try {
+        const data = await fetchMlHighlightedItems({ categoryId, offset, limit });
+        return NextResponse.json(data);
+      } catch (fallbackError) {
+        return NextResponse.json(
+          {
+            error:
+              fallbackError instanceof Error
+                ? fallbackError.message
+                : "Unexpected Mercado Livre highlights error."
+          },
+          { status: 500 }
+        );
+      }
+    }
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unexpected Mercado Livre error." },
       { status: 500 }
     );
   }
+}
+
+function isForbiddenSearchError(error: unknown) {
+  return error instanceof Error && error.message.includes("403");
 }

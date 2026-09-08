@@ -172,6 +172,13 @@ h2 {
   margin-bottom: 0;
 }
 
+.source-note {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 6px;
+}
+
 .icon-button,
 .connect-button {
   border: 1px solid var(--line);
