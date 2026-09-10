@@ -44,6 +44,16 @@ export type MlSearchItem = {
   available_quantity?: number;
 };
 
+export type MlProduct = {
+  id: string;
+  name?: string;
+  title?: string;
+  status?: string;
+  permalink?: string;
+  pictures?: Array<{ url?: string; secure_url?: string }>;
+  main_features?: Array<{ text?: string }>;
+};
+
 export type MlSearchResponse = {
   site_id: string;
   query?: string;
@@ -58,8 +68,23 @@ export type MlSearchResponse = {
 };
 
 type MlBulkItemResponse = {
-  code: number;
+  code?: number;
+  status_code?: number;
   body: MlSearchItem;
+};
+
+export type MlRecommendation = {
+  id: string;
+  title: string;
+  image?: string;
+  categoryId?: string;
+  price?: number;
+  currencyId?: string;
+  url?: string;
+  score: number;
+  rank?: number;
+  sourceType: "ITEM" | "PRODUCT" | "SEARCH";
+  reasons: string[];
 };
 
 export function getMlConfig() {
@@ -154,15 +179,6 @@ export async function readMlAccessToken() {
   setMlTokenCookies(cookieStore, refreshed);
 
   return refreshed.access_token;
-}
-
-export async function readMlSessionTokens() {
-  const cookieStore = await cookies();
-
-  return {
-    accessToken: cookieStore.get("ml_access_token")?.value ?? null,
-    refreshToken: cookieStore.get("ml_refresh_token")?.value ?? null
-  };
 }
 
 export function setMlTokenCookies(
@@ -274,17 +290,183 @@ export async function fetchMlHighlightedItems({
   } satisfies MlSearchResponse;
 }
 
+export async function fetchMlRecommendations({
+  query,
+  categoryId,
+  offset = 0,
+  limit = 50
+}: {
+  query?: string;
+  categoryId?: string;
+  offset?: number;
+  limit?: number;
+}) {
+  try {
+    const search = await searchMlItems({ query, categoryId, offset, limit });
+    return {
+      source: "search" as const,
+      paging: search.paging,
+      recommendations: compactRecommendations(
+        search.results.map((item, index) => recommendationFromItem(item, offset + index + 1, query))
+      )
+        .sort((a, b) => b.score - a.score)
+    };
+  } catch (error) {
+    if (!categoryId || !isForbiddenError(error)) {
+      throw error;
+    }
+  }
+
+  const highlights = await fetchMlHighlights(categoryId);
+  const content = highlights.content ?? [];
+  const page = content.slice(offset, offset + limit);
+  const itemIds = page
+    .filter((highlight) => highlight.type === "ITEM" && isMlItemId(highlight.id))
+    .map((highlight) => highlight.id);
+  const productIds = page
+    .filter((highlight) => highlight.type === "PRODUCT")
+    .map((highlight) => highlight.id);
+  const [items, products] = await Promise.all([
+    itemIds.length > 0 ? fetchMlItemsBulk(itemIds) : Promise.resolve([]),
+    productIds.length > 0 ? fetchMlProducts(productIds) : Promise.resolve([])
+  ]);
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  const productById = new Map(products.map((product) => [product.id, product]));
+
+  return {
+    source: "highlights" as const,
+    paging: {
+      total: content.length,
+      offset,
+      limit
+    },
+    recommendations: compactRecommendations(
+      page.map((highlight) => {
+        if (highlight.type === "ITEM") {
+          const item = itemById.get(highlight.id);
+          return item ? recommendationFromItem(item, highlight.position ?? 0) : null;
+        }
+
+        if (highlight.type === "PRODUCT") {
+          const product = productById.get(highlight.id);
+          return product ? recommendationFromProduct(product, highlight.position ?? 0, categoryId) : null;
+        }
+
+        return null;
+      })
+    )
+      .sort((a, b) => b.score - a.score)
+  };
+}
+
 export async function fetchMlItemsBulk(itemIds: string[]) {
   const ids = itemIds.slice(0, 20).join(",");
   const response = await fetchMl<MlBulkItemResponse[]>(`/items/bulk?ids=${encodeURIComponent(ids)}`);
 
   return response
-    .filter((item) => item.code >= 200 && item.code < 300)
+    .filter((item) => {
+      const status = item.status_code ?? item.code ?? 0;
+      return status >= 200 && status < 300;
+    })
     .map((item) => item.body);
+}
+
+export async function fetchMlProducts(productIds: string[]) {
+  const products = await Promise.all(
+    productIds.slice(0, 20).map(async (productId) => {
+      try {
+        return await fetchMl<MlProduct>(`/products/${productId}`);
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return products.filter((product): product is MlProduct => Boolean(product));
 }
 
 function isMlItemId(id: string) {
   return /^MLB\d+$/.test(id);
+}
+
+function isForbiddenError(error: unknown) {
+  return error instanceof Error && error.message.includes("403");
+}
+
+function recommendationFromItem(item: MlSearchItem, rank: number, query?: string): MlRecommendation | null {
+  if (!item.title || !item.permalink) {
+    return null;
+  }
+
+  const soldQuantity = item.sold_quantity ?? 0;
+  const score = clampScore(62 + rankScore(rank) + Math.min(soldQuantity / 12, 14) + (item.thumbnail ? 4 : 0));
+  const reasons = [
+    rank > 0 ? `Aparece na posicao ${rank} para a consulta atual` : "Aparece entre os destaques da categoria",
+    soldQuantity > 0 ? `${soldQuantity} vendidos no Mercado Livre` : "Anuncio com dados suficientes para avaliacao",
+    query ? `Relacionado a busca "${query}"` : "Link direto para o anuncio"
+  ];
+
+  return {
+    id: item.id,
+    title: item.title,
+    image: item.thumbnail,
+    categoryId: item.category_id,
+    price: item.price,
+    currencyId: item.currency_id,
+    url: item.permalink,
+    score,
+    rank,
+    sourceType: "ITEM",
+    reasons
+  } satisfies MlRecommendation;
+}
+
+function recommendationFromProduct(
+  product: MlProduct,
+  rank: number,
+  categoryId: string
+): MlRecommendation | null {
+  const title = product.name ?? product.title;
+
+  if (!title) {
+    return null;
+  }
+
+  const image = product.pictures?.find((picture) => picture.secure_url || picture.url);
+  const score = clampScore(66 + rankScore(rank) + (product.status === "active" ? 8 : 0) + (image ? 4 : 0));
+  const reasons = [
+    rank > 0 ? `Top ${rank} no ranking de mais vendidos` : "Aparece no ranking de mais vendidos",
+    "Produto de catalogo do Mercado Livre",
+    product.status === "active" ? "Catalogo ativo" : "Catalogo identificado para monitoramento"
+  ];
+
+  return {
+    id: product.id,
+    title,
+    image: image?.secure_url ?? image?.url,
+    categoryId,
+    url: product.permalink,
+    score,
+    rank,
+    sourceType: "PRODUCT",
+    reasons
+  } satisfies MlRecommendation;
+}
+
+function rankScore(rank: number) {
+  if (rank <= 0) {
+    return 10;
+  }
+
+  return Math.max(24 - rank, 4);
+}
+
+function clampScore(score: number) {
+  return Math.max(0, Math.min(Math.round(score), 100));
+}
+
+function compactRecommendations(items: Array<MlRecommendation | null>) {
+  return items.filter((item): item is MlRecommendation => Boolean(item));
 }
 
 async function postMlToken(body: URLSearchParams) {

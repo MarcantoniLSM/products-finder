@@ -31,12 +31,14 @@ type MlTrend = {
 type MlItem = {
   id: string;
   title: string;
-  permalink: string;
+  url?: string;
+  image?: string;
+  score: number;
+  rank?: number;
+  sourceType: "ITEM" | "PRODUCT" | "SEARCH";
+  reasons: string[];
   price?: number;
-  currency_id?: string;
-  thumbnail?: string;
-  sold_quantity?: number;
-  available_quantity?: number;
+  currencyId?: string;
 };
 
 type ProductSource = "search" | "highlights" | "";
@@ -71,9 +73,8 @@ export function MarketplaceDashboard({
   const [loading, setLoading] = useState(false);
   const [categoryError, setCategoryError] = useState("");
   const [trendError, setTrendError] = useState("");
-  const [debugToken, setDebugToken] = useState("");
   const [itemError, setItemError] = useState("");
-  const limit = 50;
+  const limit = 20;
 
   const selectedCategoryName = useMemo(
     () => categories.find((category) => category.id === selectedCategory)?.name,
@@ -138,22 +139,6 @@ export function MarketplaceDashboard({
     } catch (caught) {
       setTrends([]);
       setTrendError(getFriendlyMlError(caught, "Nao foi possivel carregar trends."));
-      await loadDebugToken();
-    }
-  }
-
-  async function loadDebugToken() {
-    try {
-      const response = await fetch("/api/ml/token");
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error);
-      }
-
-      setDebugToken(data.accessToken ?? data.refreshToken ?? "");
-    } catch {
-      setDebugToken("");
     }
   }
 
@@ -175,14 +160,14 @@ export function MarketplaceDashboard({
         params.set("q", query.trim());
       }
 
-      const response = await fetch(`/api/ml/search?${params.toString()}`);
+      const response = await fetch(`/api/ml/recommendations?${params.toString()}`);
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error);
       }
 
-      setItems(data.results ?? []);
+      setItems(data.recommendations ?? []);
       setTotal(data.paging?.total ?? 0);
       setProductSource(data.source ?? "search");
     } catch (caught) {
@@ -277,8 +262,8 @@ export function MarketplaceDashboard({
         <section className="metric-grid" aria-label="Resumo">
           <Metric icon={TrendingUp} label="Trends carregadas" value={String(trends.length)} detail="retorno do Mercado Livre" />
           <Metric icon={BarChart3} label="Categorias" value={String(categories.length)} detail="categorias raiz MLB" />
-          <Metric icon={ArrowDownUp} label="Produtos" value={String(items.length)} detail={`${total} resultados encontrados`} />
-          <Metric icon={Clock3} label="Pagina" value={`${offset / limit + 1}`} detail={`${limit} itens por pagina`} />
+          <Metric icon={ArrowDownUp} label="Recomendacoes" value={String(items.length)} detail={`${total} sinais avaliados`} />
+          <Metric icon={Clock3} label="Pagina" value={`${offset / limit + 1}`} detail={`${limit} recomendacoes por pagina`} />
         </section>
 
         <section className="workspace" id="mercado-livre">
@@ -286,9 +271,9 @@ export function MarketplaceDashboard({
             <div className="panel-header">
               <div>
                 <p className="eyebrow">Mercado Livre</p>
-                <h2>{selectedCategoryName ?? "Produtos encontrados"}</h2>
+                <h2>{selectedCategoryName ?? "Recomendacoes encontradas"}</h2>
                 {productSource === "highlights" && (
-                  <span className="source-note">Ranking de destaques por categoria</span>
+                  <span className="source-note">Recomendacoes calculadas pelo ranking de mais vendidos</span>
                 )}
               </div>
               <form className="filters" onSubmit={submitSearch}>
@@ -322,34 +307,45 @@ export function MarketplaceDashboard({
 
             {mlStatus.isConnected && (
               <>
-                <div className="product-table" role="table" aria-label="Produtos do Mercado Livre">
-                  <div className="table-row table-head" role="row">
-                    <span>Item</span>
-                    <span>Produto</span>
-                    <span>Preco</span>
-                    <span>Vendidos</span>
-                    <span>Link</span>
-                  </div>
-                  {items.map((item, index) => (
-                    <div className="table-row" role="row" key={item.id}>
-                      <span className="rank">#{offset + index + 1}</span>
-                      <span className="product-cell">
-                        {item.thumbnail && <img src={item.thumbnail} alt="" />}
-                        <strong>{item.title}</strong>
-                      </span>
-                      <span>{formatPrice(item.price, item.currency_id)}</span>
-                      <span>{item.sold_quantity ?? "-"}</span>
-                      <span>
-                        <a className="external-link" href={item.permalink} target="_blank" rel="noreferrer">
-                          Abrir <ExternalLink size={14} />
-                        </a>
-                      </span>
-                    </div>
+                <div className="recommendation-list" aria-label="Recomendacoes do Mercado Livre">
+                  {items.map((item) => (
+                    <article className="recommendation-card" key={item.id}>
+                      <div className="recommendation-media">
+                        {item.image ? <img src={item.image} alt="" /> : <PackageSearch size={28} />}
+                      </div>
+                      <div className="recommendation-body">
+                        <div className="recommendation-title">
+                          <div>
+                            <span className="recommendation-type">
+                              {item.sourceType === "ITEM" ? "Anuncio" : "Catalogo"}
+                              {item.rank ? ` · #${item.rank}` : ""}
+                            </span>
+                            <h3>{item.title}</h3>
+                          </div>
+                          <strong className="score">{item.score}</strong>
+                        </div>
+                        <div className="reason-list">
+                          {item.reasons.map((reason) => (
+                            <span key={reason}>{reason}</span>
+                          ))}
+                        </div>
+                        <div className="recommendation-footer">
+                          <span>{formatPrice(item.price, item.currencyId)}</span>
+                          {item.url ? (
+                            <a className="external-link" href={item.url} target="_blank" rel="noreferrer">
+                              Abrir no ML <ExternalLink size={14} />
+                            </a>
+                          ) : (
+                            <span className="muted-action">Sem link direto confiavel</span>
+                          )}
+                        </div>
+                      </div>
+                    </article>
                   ))}
                 </div>
 
                 {items.length === 0 && !loading && (
-                  <div className="empty-state">Nenhum produto encontrado para essa consulta.</div>
+                  <div className="empty-state">Nenhuma recomendacao confiavel encontrada para essa consulta.</div>
                 )}
 
                 <div className="pagination">
@@ -401,10 +397,7 @@ export function MarketplaceDashboard({
               </div>
               <div className="trend-list">
                 {trendError ? (
-                  <div className="token-debug">
-                    <span>Token gerado pela autenticacao</span>
-                    <code>{debugToken || "Token nao encontrado na sessao atual."}</code>
-                  </div>
+                  <div className="resource-error">{trendError}</div>
                 ) : (
                   trends.map((trend, index) => (
                     <a href={trend.url} target="_blank" rel="noreferrer" key={`${trend.keyword}-${index}`}>
