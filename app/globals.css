@@ -328,6 +328,31 @@ h2 {
   padding-right: 4px;
 }
 
+.category-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: -4px 0 12px;
+}
+
+.category-breadcrumb button,
+.category-breadcrumb span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  min-height: 28px;
+  padding: 0 9px;
+}
+
+.category-breadcrumb button {
+  cursor: pointer;
+  color: var(--green);
+  font-weight: 800;
+}
+
 .category-pill,
 .trend-pills button {
   border: 1px solid var(--line);
@@ -375,6 +400,12 @@ h2 {
 
 .trend-pills button strong {
   font-size: 13px;
+}
+
+.inline-loading {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 10px;
 }
 
 .filters {

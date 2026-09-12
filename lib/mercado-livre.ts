@@ -52,6 +52,23 @@ export type MlProduct = {
   permalink?: string;
   pictures?: Array<{ url?: string; secure_url?: string }>;
   main_features?: Array<{ text?: string }>;
+  buy_box_winner?: {
+    item_id?: string;
+    price?: number;
+    currency_id?: string;
+    available_quantity?: number;
+  };
+};
+
+export type MlUserProduct = {
+  id: string;
+  name?: string;
+  title?: string;
+  family_name?: string;
+  user_id?: number;
+  seller_id?: number;
+  pictures?: Array<{ url?: string; secure_url?: string }>;
+  permalink?: string;
 };
 
 export type MlSearchResponse = {
@@ -83,8 +100,12 @@ export type MlRecommendation = {
   url?: string;
   score: number;
   rank?: number;
-  sourceType: "ITEM" | "PRODUCT" | "SEARCH";
+  sourceType: "ITEM" | "PRODUCT" | "USER_PRODUCT" | "SEARCH";
   reasons: string[];
+};
+
+type MlUserProductItemsSearchResponse = {
+  results?: string[];
 };
 
 export function getMlConfig() {
@@ -323,15 +344,23 @@ export async function fetchMlRecommendations({
   const itemIds = page
     .filter((highlight) => highlight.type === "ITEM" && isMlItemId(highlight.id))
     .map((highlight) => highlight.id);
-  const productIds = page
-    .filter((highlight) => highlight.type === "PRODUCT")
+  const productIds = page.filter((highlight) => highlight.type === "PRODUCT").map((highlight) => highlight.id);
+  const userProductIds = page
+    .filter((highlight) => highlight.type === "USER_PRODUCT")
     .map((highlight) => highlight.id);
-  const [items, products] = await Promise.all([
+  const [items, products, userProductItems] = await Promise.all([
     itemIds.length > 0 ? fetchMlItemsBulk(itemIds) : Promise.resolve([]),
-    productIds.length > 0 ? fetchMlProducts(productIds) : Promise.resolve([])
+    productIds.length > 0 ? fetchMlProducts(productIds) : Promise.resolve([]),
+    userProductIds.length > 0 ? fetchMlItemsFromUserProducts(userProductIds) : Promise.resolve([])
   ]);
+  const buyBoxItemIds = products
+    .map((product) => product.buy_box_winner?.item_id)
+    .filter((itemId): itemId is string => Boolean(itemId));
+  const buyBoxItems = buyBoxItemIds.length > 0 ? await fetchMlItemsBulk(buyBoxItemIds) : [];
   const itemById = new Map(items.map((item) => [item.id, item]));
   const productById = new Map(products.map((product) => [product.id, product]));
+  const buyBoxItemById = new Map(buyBoxItems.map((item) => [item.id, item]));
+  const userProductItemById = new Map(userProductItems.map((item) => [item.userProductId, item.item]));
 
   return {
     source: "highlights" as const,
@@ -349,7 +378,17 @@ export async function fetchMlRecommendations({
 
         if (highlight.type === "PRODUCT") {
           const product = productById.get(highlight.id);
-          return product ? recommendationFromProduct(product, highlight.position ?? 0, categoryId) : null;
+          const buyBoxItem = product?.buy_box_winner?.item_id
+            ? buyBoxItemById.get(product.buy_box_winner.item_id)
+            : undefined;
+          return product
+            ? recommendationFromProduct(product, highlight.position ?? 0, categoryId, buyBoxItem)
+            : null;
+        }
+
+        if (highlight.type === "USER_PRODUCT") {
+          const item = userProductItemById.get(highlight.id);
+          return item ? recommendationFromUserProductItem(item, highlight.position ?? 0) : null;
         }
 
         return null;
@@ -383,6 +422,41 @@ export async function fetchMlProducts(productIds: string[]) {
   );
 
   return products.filter((product): product is MlProduct => Boolean(product));
+}
+
+export async function fetchMlUserProduct(userProductId: string) {
+  return fetchMl<MlUserProduct>(`/user-products/${userProductId}`);
+}
+
+export async function fetchMlItemsFromUserProducts(userProductIds: string[]) {
+  const mapped = await Promise.all(
+    userProductIds.slice(0, 20).map(async (userProductId) => {
+      try {
+        const userProduct = await fetchMlUserProduct(userProductId);
+        const sellerId = userProduct.user_id ?? userProduct.seller_id;
+
+        if (!sellerId) {
+          return null;
+        }
+
+        const search = await fetchMl<MlUserProductItemsSearchResponse>(
+          `/users/${sellerId}/items/search?user_product_id=${encodeURIComponent(userProductId)}`
+        );
+        const itemId = search.results?.find(isMlItemId);
+
+        if (!itemId) {
+          return null;
+        }
+
+        const [item] = await fetchMlItemsBulk([itemId]);
+        return item ? { userProductId, item } : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return mapped.filter((item): item is { userProductId: string; item: MlSearchItem } => Boolean(item));
 }
 
 function isMlItemId(id: string) {
@@ -424,7 +498,8 @@ function recommendationFromItem(item: MlSearchItem, rank: number, query?: string
 function recommendationFromProduct(
   product: MlProduct,
   rank: number,
-  categoryId: string
+  categoryId: string,
+  buyBoxItem?: MlSearchItem
 ): MlRecommendation | null {
   const title = product.name ?? product.title;
 
@@ -437,20 +512,40 @@ function recommendationFromProduct(
   const reasons = [
     rank > 0 ? `Top ${rank} no ranking de mais vendidos` : "Aparece no ranking de mais vendidos",
     "Produto de catalogo do Mercado Livre",
-    product.status === "active" ? "Catalogo ativo" : "Catalogo identificado para monitoramento"
+    buyBoxItem ? "Link resolvido pela publicacao vencedora do catalogo" : "Link para pagina oficial de catalogo"
   ];
 
   return {
     id: product.id,
     title,
-    image: image?.secure_url ?? image?.url,
+    image: buyBoxItem?.thumbnail ?? image?.secure_url ?? image?.url,
     categoryId,
-    url: product.permalink ?? buildMlCatalogUrl(product.id),
+    price: buyBoxItem?.price ?? product.buy_box_winner?.price,
+    currencyId: buyBoxItem?.currency_id ?? product.buy_box_winner?.currency_id,
+    url: buyBoxItem?.permalink ?? product.permalink ?? buildMlCatalogUrl(product.id),
     score,
     rank,
     sourceType: "PRODUCT",
     reasons
   } satisfies MlRecommendation;
+}
+
+function recommendationFromUserProductItem(item: MlSearchItem, rank: number): MlRecommendation | null {
+  const recommendation = recommendationFromItem(item, rank);
+
+  if (!recommendation) {
+    return null;
+  }
+
+  return {
+    ...recommendation,
+    sourceType: "USER_PRODUCT",
+    reasons: [
+      rank > 0 ? `Top ${rank} no ranking de mais vendidos` : "Aparece no ranking de mais vendidos",
+      "User Product resolvido para uma publicacao real",
+      "Link direto para o anuncio"
+    ]
+  };
 }
 
 function buildMlCatalogUrl(productId: string) {
@@ -470,7 +565,7 @@ function clampScore(score: number) {
 }
 
 function compactRecommendations(items: Array<MlRecommendation | null>) {
-  return items.filter((item): item is MlRecommendation => Boolean(item));
+  return items.filter((item): item is MlRecommendation => Boolean(item?.url));
 }
 
 async function postMlToken(body: URLSearchParams) {

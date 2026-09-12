@@ -23,6 +23,8 @@ type MlCategory = {
   id: string;
   name: string;
   total_items_in_this_category?: number;
+  children_categories?: MlCategory[];
+  path_from_root?: Array<{ id: string; name: string }>;
 };
 
 type MlTrend = {
@@ -37,7 +39,7 @@ type MlItem = {
   image?: string;
   score: number;
   rank?: number;
-  sourceType: "ITEM" | "PRODUCT" | "SEARCH";
+  sourceType: "ITEM" | "PRODUCT" | "USER_PRODUCT" | "SEARCH";
   reasons: string[];
   price?: number;
   currencyId?: string;
@@ -67,7 +69,10 @@ export function MarketplaceDashboard({
   mlMessage: MlMessage;
 }) {
   const [categories, setCategories] = useState<MlCategory[]>([]);
+  const [currentCategories, setCurrentCategories] = useState<MlCategory[]>([]);
+  const [categoryPath, setCategoryPath] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedCategoryLabel, setSelectedCategoryLabel] = useState("");
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [trends, setTrends] = useState<MlTrend[]>([]);
@@ -77,15 +82,12 @@ export function MarketplaceDashboard({
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [categoryError, setCategoryError] = useState("");
+  const [categoryLoading, setCategoryLoading] = useState(false);
   const [trendError, setTrendError] = useState("");
   const [itemError, setItemError] = useState("");
   const limit = RECOMMENDATIONS_LIMIT;
 
-  const selectedCategoryName = useMemo(
-    () => categories.find((category) => category.id === selectedCategory)?.name,
-    [categories, selectedCategory]
-  );
-  const featuredCategories = categories.slice(0, 12);
+  const featuredCategories = currentCategories.slice(0, 18);
   const featuredTrends = trends.slice(0, 18);
 
   async function loadCategories() {
@@ -99,6 +101,7 @@ export function MarketplaceDashboard({
       }
 
       setCategories(data.categories);
+      setCurrentCategories(data.categories);
     } catch (caught) {
       setCategoryError(caught instanceof Error ? caught.message : "Nao foi possivel carregar categorias.");
     }
@@ -207,8 +210,9 @@ export function MarketplaceDashboard({
     event.preventDefault();
     const nextQuery = query.trim();
 
-    if (!nextQuery && !selectedCategory) {
+    if (!selectedCategory) {
       clearRecommendations();
+      setItemError("Escolha uma categoria folha antes de buscar produtos. A busca livre do Mercado Livre nao esta estavel para recomendacoes.");
       return;
     }
 
@@ -216,19 +220,76 @@ export function MarketplaceDashboard({
     setOffset(0);
   }
 
-  function chooseCategory(categoryId: string) {
-    setSelectedCategory(categoryId);
-    setOffset(0);
+  async function inspectCategory(category: MlCategory) {
+    setCategoryLoading(true);
+    setCategoryError("");
 
-    if (!categoryId && !submittedQuery) {
-      clearRecommendations();
+    try {
+      const response = await fetch(`/api/ml/categories?categoryId=${encodeURIComponent(category.id)}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error);
+      }
+
+      const categoryDetail = data.categories as MlCategory;
+      const children = categoryDetail.children_categories ?? [];
+      const path = categoryDetail.path_from_root ?? [{ id: category.id, name: category.name }];
+
+      setCategoryPath(path);
+
+      if (children.length > 0) {
+        setCurrentCategories(children);
+        setSelectedCategory("");
+        setSelectedCategoryLabel("");
+        clearRecommendations();
+        return;
+      }
+
+      setSelectedCategory(categoryDetail.id);
+      setSelectedCategoryLabel(categoryDetail.name);
+      setOffset(0);
+      setSubmittedQuery(query.trim());
+    } catch (caught) {
+      setCategoryError(caught instanceof Error ? caught.message : "Nao foi possivel carregar a categoria.");
+    } finally {
+      setCategoryLoading(false);
     }
+  }
+
+  async function chooseCategoryFromSelect(categoryId: string) {
+    if (!categoryId) {
+      resetCategoryNavigation();
+      return;
+    }
+
+    const category = [...currentCategories, ...categories].find((item) => item.id === categoryId);
+
+    if (category) {
+      await inspectCategory(category);
+    }
+  }
+
+  function resetCategoryNavigation() {
+    setCurrentCategories(categories);
+    setCategoryPath([]);
+    setSelectedCategory("");
+    setSelectedCategoryLabel("");
+    setOffset(0);
+    clearRecommendations();
   }
 
   function chooseTrend(keyword: string) {
     setQuery(keyword);
-    setSubmittedQuery(keyword);
     setOffset(0);
+
+    if (!selectedCategory) {
+      clearRecommendations();
+      setItemError("Trend selecionada. Agora escolha uma categoria folha para transformar esse termo em recomendacoes.");
+      return;
+    }
+
+    setSubmittedQuery(keyword);
   }
 
   function clearRecommendations() {
@@ -308,7 +369,7 @@ export function MarketplaceDashboard({
 
         <section className="metric-grid" aria-label="Resumo">
           <Metric icon={TrendingUp} label="Trends carregadas" value={String(trends.length)} detail="retorno do Mercado Livre" />
-          <Metric icon={BarChart3} label="Categorias" value={String(categories.length)} detail="categorias raiz MLB" />
+          <Metric icon={BarChart3} label="Categorias" value={String(currentCategories.length)} detail="opcoes no nivel atual" />
           <Metric icon={ArrowDownUp} label="Recomendacoes" value={String(items.length)} detail={`${total} sinais avaliados`} />
           <Metric icon={Clock3} label="Pagina" value={`${offset / limit + 1}`} detail={`${limit} recomendacoes por pagina`} />
         </section>
@@ -318,22 +379,33 @@ export function MarketplaceDashboard({
             <div className="panel-header compact">
               <div>
                 <p className="eyebrow">Categorias</p>
-                <h2>Escolha um mercado para investigar</h2>
+                <h2>{selectedCategoryLabel || "Escolha uma categoria folha"}</h2>
               </div>
               <Sparkles size={18} />
+            </div>
+            <div className="category-breadcrumb">
+              <button onClick={resetCategoryNavigation}>Todas</button>
+              {categoryPath.map((category) => (
+                <span key={category.id}>{category.name}</span>
+              ))}
             </div>
             <div className="category-pills">
               {featuredCategories.map((category) => (
                 <button
                   className={category.id === selectedCategory ? "category-pill selected" : "category-pill"}
                   key={category.id}
-                  onClick={() => chooseCategory(category.id)}
+                  onClick={() => void inspectCategory(category)}
                 >
                   <strong>{category.name}</strong>
-                  <span>{formatCompact(category.total_items_in_this_category) || category.id}</span>
+                  <span>
+                    {category.children_categories?.length
+                      ? `${category.children_categories.length} subcategorias`
+                      : formatCompact(category.total_items_in_this_category) || "investigar"}
+                  </span>
                 </button>
               ))}
             </div>
+            {categoryLoading && <div className="inline-loading">Carregando subcategorias...</div>}
           </div>
 
           <div className="panel discovery-panel">
@@ -364,7 +436,7 @@ export function MarketplaceDashboard({
             <div className="panel-header">
               <div>
                 <p className="eyebrow">Mercado Livre</p>
-                <h2>{selectedCategoryName ?? "Recomendacoes"}</h2>
+                <h2>{selectedCategoryLabel || "Recomendacoes"}</h2>
                 {productSource === "highlights" && (
                   <span className="source-note">Recomendacoes calculadas pelo ranking de mais vendidos</span>
                 )}
@@ -372,9 +444,9 @@ export function MarketplaceDashboard({
               <form className="filters" onSubmit={submitSearch}>
                 <label>
                   <span>Categoria</span>
-                  <select value={selectedCategory} onChange={(event) => chooseCategory(event.target.value)}>
-                    <option value="">Todas</option>
-                    {categories.map((category) => (
+                  <select value={selectedCategory} onChange={(event) => void chooseCategoryFromSelect(event.target.value)}>
+                    <option value="">Escolha uma categoria</option>
+                    {currentCategories.map((category) => (
                       <option value={category.id} key={category.id}>
                         {category.name}
                       </option>
@@ -382,17 +454,19 @@ export function MarketplaceDashboard({
                   </select>
                 </label>
                 <label>
-                  <span>Busca</span>
+                  <span>Refinar por termo</span>
                   <div className="search-input">
                     <Search size={18} />
                     <input
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Produto, termo ou marca"
+                      placeholder="Opcional depois de escolher categoria"
                     />
                   </div>
                 </label>
-                <button type="submit">Buscar</button>
+                <button type="submit" disabled={!selectedCategory || loading}>
+                  Buscar
+                </button>
               </form>
             </div>
 
@@ -414,7 +488,7 @@ export function MarketplaceDashboard({
                         <div className="recommendation-title">
                           <div>
                             <span className="recommendation-type">
-                              {item.sourceType === "ITEM" ? "Anuncio" : "Catalogo"}
+                              {formatSourceType(item.sourceType)}
                               {item.rank ? ` · #${item.rank}` : ""}
                             </span>
                             <h3>{item.title}</h3>
@@ -446,8 +520,8 @@ export function MarketplaceDashboard({
                     <PackageSearch size={28} />
                     <strong>Comece por uma categoria, trend ou busca manual.</strong>
                     <span>
-                      A lista fica vazia ate existir um sinal claro para investigar. Isso evita
-                      recomendações genéricas que nao ajudam a decidir.
+                      Escolha uma categoria folha e, se quiser, refine com um termo. Assim evitamos
+                      rankings amplos ou buscas bloqueadas que nao viram recomendacoes acionaveis.
                     </span>
                   </div>
                 )}
@@ -558,6 +632,18 @@ function formatCompact(value?: number) {
     notation: "compact",
     maximumFractionDigits: 1
   }).format(value);
+}
+
+function formatSourceType(sourceType: MlItem["sourceType"]) {
+  if (sourceType === "PRODUCT") {
+    return "Catalogo";
+  }
+
+  if (sourceType === "USER_PRODUCT") {
+    return "User Product";
+  }
+
+  return "Anuncio";
 }
 
 function getFriendlyMlError(caught: unknown, fallback: string) {
