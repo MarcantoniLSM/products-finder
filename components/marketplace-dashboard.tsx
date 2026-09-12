@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownUp,
   BarChart3,
@@ -14,6 +15,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   Sparkles,
+  Star,
   TrendingUp
 } from "lucide-react";
 
@@ -55,6 +57,8 @@ const marketplaceNav = [
   { name: "Shopee", status: "em breve", icon: Lock }
 ];
 
+const RECOMMENDATIONS_LIMIT = 20;
+
 export function MarketplaceDashboard({
   mlStatus,
   mlMessage
@@ -65,6 +69,7 @@ export function MarketplaceDashboard({
   const [categories, setCategories] = useState<MlCategory[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("");
   const [query, setQuery] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
   const [trends, setTrends] = useState<MlTrend[]>([]);
   const [items, setItems] = useState<MlItem[]>([]);
   const [productSource, setProductSource] = useState<ProductSource>("");
@@ -74,38 +79,14 @@ export function MarketplaceDashboard({
   const [categoryError, setCategoryError] = useState("");
   const [trendError, setTrendError] = useState("");
   const [itemError, setItemError] = useState("");
-  const limit = 20;
+  const limit = RECOMMENDATIONS_LIMIT;
 
   const selectedCategoryName = useMemo(
     () => categories.find((category) => category.id === selectedCategory)?.name,
     [categories, selectedCategory]
   );
-
-  useEffect(() => {
-    if (!mlStatus.isConnected) {
-      return;
-    }
-
-    void loadCategories();
-  }, [mlStatus.isConnected]);
-
-  useEffect(() => {
-    if (!mlStatus.isConnected) {
-      return;
-    }
-
-    void loadTrends(selectedCategory);
-  }, [mlStatus.isConnected, selectedCategory]);
-
-  useEffect(() => {
-    if (!mlStatus.isConnected || (!selectedCategory && !query.trim())) {
-      setItems([]);
-      setTotal(0);
-      return;
-    }
-
-    void loadItems({ nextOffset: offset });
-  }, [mlStatus.isConnected, selectedCategory, offset]);
+  const featuredCategories = categories.slice(0, 12);
+  const featuredTrends = trends.slice(0, 18);
 
   async function loadCategories() {
     try {
@@ -118,7 +99,6 @@ export function MarketplaceDashboard({
       }
 
       setCategories(data.categories);
-      setSelectedCategory(data.categories?.[0]?.id ?? "");
     } catch (caught) {
       setCategoryError(caught instanceof Error ? caught.message : "Nao foi possivel carregar categorias.");
     }
@@ -142,22 +122,37 @@ export function MarketplaceDashboard({
     }
   }
 
-  async function loadItems({ nextOffset = 0 }: { nextOffset?: number } = {}) {
+  const loadItems = useCallback(async function loadItems({
+    nextOffset = 0,
+    nextQuery,
+    nextCategoryId
+  }: {
+    nextOffset?: number;
+    nextQuery: string;
+    nextCategoryId: string;
+  }) {
+    if (!nextCategoryId && !nextQuery.trim()) {
+      setItems([]);
+      setTotal(0);
+      setProductSource("");
+      return;
+    }
+
     setLoading(true);
     setItemError("");
 
     try {
       const params = new URLSearchParams({
-        limit: String(limit),
+        limit: String(RECOMMENDATIONS_LIMIT),
         offset: String(nextOffset)
       });
 
-      if (selectedCategory) {
-        params.set("categoryId", selectedCategory);
+      if (nextCategoryId) {
+        params.set("categoryId", nextCategoryId);
       }
 
-      if (query.trim()) {
-        params.set("q", query.trim());
+      if (nextQuery.trim()) {
+        params.set("q", nextQuery.trim());
       }
 
       const response = await fetch(`/api/ml/recommendations?${params.toString()}`);
@@ -178,17 +173,69 @@ export function MarketplaceDashboard({
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (!mlStatus.isConnected) {
+      return;
+    }
+
+    void loadCategories();
+  }, [mlStatus.isConnected]);
+
+  useEffect(() => {
+    if (!mlStatus.isConnected) {
+      return;
+    }
+
+    void loadTrends(selectedCategory);
+  }, [mlStatus.isConnected, selectedCategory]);
+
+  useEffect(() => {
+    if (!mlStatus.isConnected || (!selectedCategory && !submittedQuery)) {
+      return;
+    }
+
+    void loadItems({
+      nextOffset: offset,
+      nextQuery: submittedQuery,
+      nextCategoryId: selectedCategory
+    });
+  }, [loadItems, mlStatus.isConnected, offset, selectedCategory, submittedQuery]);
 
   function submitSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const nextQuery = query.trim();
+
+    if (!nextQuery && !selectedCategory) {
+      clearRecommendations();
+      return;
+    }
+
+    setSubmittedQuery(nextQuery);
     setOffset(0);
-    void loadItems({ nextOffset: 0 });
   }
 
   function chooseCategory(categoryId: string) {
     setSelectedCategory(categoryId);
     setOffset(0);
+
+    if (!categoryId && !submittedQuery) {
+      clearRecommendations();
+    }
+  }
+
+  function chooseTrend(keyword: string) {
+    setQuery(keyword);
+    setSubmittedQuery(keyword);
+    setOffset(0);
+  }
+
+  function clearRecommendations() {
+    setItems([]);
+    setTotal(0);
+    setProductSource("");
+    setItemError("");
   }
 
   return (
@@ -266,12 +313,58 @@ export function MarketplaceDashboard({
           <Metric icon={Clock3} label="Pagina" value={`${offset / limit + 1}`} detail={`${limit} recomendacoes por pagina`} />
         </section>
 
+        <section className="discovery-grid" aria-label="Descoberta">
+          <div className="panel discovery-panel">
+            <div className="panel-header compact">
+              <div>
+                <p className="eyebrow">Categorias</p>
+                <h2>Escolha um mercado para investigar</h2>
+              </div>
+              <Sparkles size={18} />
+            </div>
+            <div className="category-pills">
+              {featuredCategories.map((category) => (
+                <button
+                  className={category.id === selectedCategory ? "category-pill selected" : "category-pill"}
+                  key={category.id}
+                  onClick={() => chooseCategory(category.id)}
+                >
+                  <strong>{category.name}</strong>
+                  <span>{formatCompact(category.total_items_in_this_category) || category.id}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="panel discovery-panel">
+            <div className="panel-header compact">
+              <div>
+                <p className="eyebrow">Trends</p>
+                <h2>Termos para transformar em busca</h2>
+              </div>
+              <Star size={18} />
+            </div>
+            {trendError ? (
+              <div className="resource-error">{trendError}</div>
+            ) : (
+              <div className="trend-pills">
+                {featuredTrends.map((trend, index) => (
+                  <button onClick={() => chooseTrend(trend.keyword)} key={`${trend.keyword}-${index}`}>
+                    <span>#{index + 1}</span>
+                    <strong>{trend.keyword}</strong>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
         <section className="workspace" id="mercado-livre">
           <div className="panel main-panel">
             <div className="panel-header">
               <div>
                 <p className="eyebrow">Mercado Livre</p>
-                <h2>{selectedCategoryName ?? "Recomendacoes encontradas"}</h2>
+                <h2>{selectedCategoryName ?? "Recomendacoes"}</h2>
                 {productSource === "highlights" && (
                   <span className="source-note">Recomendacoes calculadas pelo ranking de mais vendidos</span>
                 )}
@@ -311,7 +404,11 @@ export function MarketplaceDashboard({
                   {items.map((item) => (
                     <article className="recommendation-card" key={item.id}>
                       <div className="recommendation-media">
-                        {item.image ? <img src={item.image} alt="" /> : <PackageSearch size={28} />}
+                        {item.image ? (
+                          <Image src={item.image} alt="" width={86} height={86} unoptimized />
+                        ) : (
+                          <PackageSearch size={28} />
+                        )}
                       </div>
                       <div className="recommendation-body">
                         <div className="recommendation-title">
@@ -345,7 +442,14 @@ export function MarketplaceDashboard({
                 </div>
 
                 {items.length === 0 && !loading && (
-                  <div className="empty-state">Nenhuma recomendacao confiavel encontrada para essa consulta.</div>
+                  <div className="empty-state">
+                    <PackageSearch size={28} />
+                    <strong>Comece por uma categoria, trend ou busca manual.</strong>
+                    <span>
+                      A lista fica vazia ate existir um sinal claro para investigar. Isso evita
+                      recomendações genéricas que nao ajudam a decidir.
+                    </span>
+                  </div>
                 )}
 
                 <div className="pagination">
@@ -366,59 +470,27 @@ export function MarketplaceDashboard({
               </>
             )}
           </div>
-
-          <aside className="side-panel">
-            <div className="panel">
-              <div className="panel-header compact">
-                <h2>Categorias</h2>
-                <Sparkles size={18} />
-              </div>
-              <div className="category-list">
-                {categories.map((category) => (
-                  <button
-                    className={category.id === selectedCategory ? "category-item selected" : "category-item"}
-                    key={category.id}
-                    onClick={() => chooseCategory(category.id)}
-                  >
-                    <div>
-                      <strong>{category.name}</strong>
-                      <span>{category.id}</span>
-                    </div>
-                    <small>{formatCompact(category.total_items_in_this_category)}</small>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="panel">
-              <div className="panel-header compact">
-                <h2>Trends</h2>
-                <ExternalLink size={18} />
-              </div>
-              <div className="trend-list">
-                {trendError ? (
-                  <div className="resource-error">{trendError}</div>
-                ) : (
-                  trends.map((trend, index) => (
-                    <a href={trend.url} target="_blank" rel="noreferrer" key={`${trend.keyword}-${index}`}>
-                      <span>#{index + 1}</span>
-                      <strong>{trend.keyword}</strong>
-                      <ExternalLink size={14} />
-                    </a>
-                  ))
-                )}
-              </div>
-            </div>
-          </aside>
         </section>
       </section>
 
       {!mlStatus.isConnected && (
         <div className="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="ml-auth-title">
-          <div className="skeleton-backdrop" aria-hidden="true">
-            <div />
-            <div />
-            <div />
+          <div className="auth-preview" aria-hidden="true">
+            <div className="preview-sidebar" />
+            <div className="preview-content">
+              <div className="preview-bar" />
+              <div className="preview-metrics">
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className="preview-board">
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
+            </div>
           </div>
           <section className="auth-modal">
             <div className="auth-icon">

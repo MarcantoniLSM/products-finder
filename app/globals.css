@@ -161,8 +161,8 @@ p {
 
 h1 {
   max-width: 820px;
-  font-size: clamp(32px, 5vw, 58px);
-  line-height: 1.02;
+  font-size: clamp(30px, 4vw, 42px);
+  line-height: 1.08;
   letter-spacing: 0;
   margin-bottom: 0;
 }
@@ -278,11 +278,19 @@ h2 {
   font-size: 30px;
 }
 
-.workspace {
+.discovery-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 18px;
-  align-items: start;
+  margin-bottom: 18px;
+}
+
+.discovery-panel {
+  min-width: 0;
+}
+
+.workspace {
+  display: block;
 }
 
 .panel {
@@ -308,6 +316,65 @@ h2 {
 
 .panel-header.compact {
   margin-bottom: 14px;
+}
+
+.category-pills,
+.trend-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.category-pill,
+.trend-pills button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.category-pill {
+  display: grid;
+  gap: 3px;
+  min-width: min(220px, 100%);
+  padding: 10px 12px;
+}
+
+.category-pill.selected {
+  border-color: #87bda6;
+  background: #e7f4ed;
+}
+
+.category-pill strong {
+  font-size: 14px;
+}
+
+.category-pill span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.trend-pills button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.trend-pills button span {
+  color: var(--amber);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.trend-pills button strong {
+  font-size: 13px;
 }
 
 .filters {
@@ -642,11 +709,24 @@ h2 {
 }
 
 .empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
   border: 1px dashed var(--line);
   border-radius: 8px;
   color: var(--muted);
-  padding: 24px;
+  padding: 32px 24px;
   text-align: center;
+}
+
+.empty-state strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.empty-state span {
+  max-width: 560px;
+  line-height: 1.5;
 }
 
 .pagination {
@@ -679,32 +759,55 @@ h2 {
   backdrop-filter: blur(6px);
 }
 
-.skeleton-backdrop {
+.auth-preview {
   position: absolute;
   inset: 0;
   display: grid;
   grid-template-columns: 280px 1fr;
   gap: 24px;
   padding: 32px;
-  opacity: 0.22;
+  opacity: 0.28;
   pointer-events: none;
 }
 
-.skeleton-backdrop div {
+.preview-sidebar,
+.preview-content,
+.preview-bar,
+.preview-metrics span,
+.preview-board span {
   border-radius: 8px;
-  background: linear-gradient(90deg, #ffffff 0%, #dbe5df 50%, #ffffff 100%);
+  background: #ffffff;
 }
 
-.skeleton-backdrop div:first-child {
-  grid-row: span 2;
+.preview-sidebar {
+  min-height: calc(100vh - 64px);
 }
 
-.skeleton-backdrop div:nth-child(2) {
-  min-height: 180px;
+.preview-content {
+  display: grid;
+  grid-template-rows: 74px 120px 1fr;
+  gap: 18px;
+  min-height: calc(100vh - 64px);
+  padding: 18px;
 }
 
-.skeleton-backdrop div:nth-child(3) {
-  min-height: 320px;
+.preview-bar {
+  width: min(620px, 80%);
+}
+
+.preview-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.preview-board {
+  display: grid;
+  gap: 12px;
+}
+
+.preview-board span {
+  min-height: 96px;
 }
 
 .auth-modal {
@@ -756,6 +859,7 @@ h2 {
   }
 
   .metric-grid,
+  .discovery-grid,
   .workspace {
     grid-template-columns: 1fr;
   }
@@ -794,8 +898,12 @@ h2 {
     height: 160px;
   }
 
-  .skeleton-backdrop {
+  .auth-preview {
     grid-template-columns: 1fr;
     padding: 18px;
+  }
+
+  .preview-sidebar {
+    display: none;
   }
 }

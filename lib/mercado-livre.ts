@@ -445,12 +445,16 @@ function recommendationFromProduct(
     title,
     image: image?.secure_url ?? image?.url,
     categoryId,
-    url: product.permalink,
+    url: product.permalink ?? buildMlCatalogUrl(product.id),
     score,
     rank,
     sourceType: "PRODUCT",
     reasons
   } satisfies MlRecommendation;
+}
+
+function buildMlCatalogUrl(productId: string) {
+  return `https://www.mercadolivre.com.br/p/${encodeURIComponent(productId)}`;
 }
 
 function rankScore(rank: number) {
